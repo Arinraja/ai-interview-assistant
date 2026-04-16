@@ -16,6 +16,8 @@ class AnswerRequest(BaseModel):
 # API 1: Generate Questions
 @app.post("/generate-questions/")
 def get_questions(request: RoleRequest):
+
+    
     questions = generate_questions(request.role)
     return {"questions": questions}
 
