@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import json
 import re
+import uvicorn
 
 # 👉 LLM functions
 from services.llm_service import generate_questions_llm, evaluate_answers_llm
@@ -66,3 +67,6 @@ def evaluate_answers(data: dict):
 
     except Exception as e:
         return {"error": str(e)}
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
