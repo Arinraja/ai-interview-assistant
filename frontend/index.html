@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Interview Assistant</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #1e3c72, #2a5298);
+  color: white;
+}
+
+.container {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 20px;
+}
+
+.card {
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(10px);
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+}
+
+h1 {
+  text-align: center;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: none;
+}
+
+button {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #00c6ff;
+  color: white;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+button:hover {
+  background: #0072ff;
+}
+
+.question {
+  margin-top: 15px;
+}
+
+.loading {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.result {
+  background: rgba(0,0,0,0.2);
+  padding: 15px;
+  border-radius: 10px;
+}
+
+/* Progress Bar */
+#progress {
+  height: 10px;
+  background: #ccc;
+  border-radius: 5px;
+  margin: 15px 0;
+  overflow: hidden;
+}
+
+#progress-bar {
+  height: 100%;
+  width: 0%;
+  background: #00c6ff;
+  transition: width 0.3s;
+}
+
+/* Timer */
+#timer {
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <h1>👨‍💻 AI Interview Assistant</h1>
+
+  <!-- TIMER -->
+  <div id="timer">⏱ Time: 0s</div>
+
+  <!-- INPUT -->
+  <div class="card">
+    <input type="text" id="role" placeholder="Enter role" onkeypress="handleEnter(event)">
+    <button id="genBtn" onclick="generateQuestions()">Generate Questions</button>
+    <div id="loading" class="loading"></div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div id="progress">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- QUESTIONS -->
+  <div id="questions"></div>
+
+  <!-- SUBMIT -->
+  <button id="submitBtn" onclick="submitAnswers()" style="display:none;">
+    Submit Answers
+  </button>
+
+  <!-- RESULT -->
+  <div id="result"></div>
+</div>
+
+<script>
+let questionsList = [];
+let time = 0;
+
+/* TIMER */
+setInterval(() => {
+  time++;
+  document.getElementById("timer").innerText = "⏱ Time: " + time + "s";
+}, 1000);
+
+/* PROGRESS FUNCTION */
+function updateProgress() {
+  if (!questionsList.length) return;
+
+  let filled = questionsList.filter((_, i) => {
+    const el = document.getElementById(`ans-${i}`);
+    return el && el.value.trim() !== "";
+  }).length;
+
+  let percent = (filled / questionsList.length) * 100;
+  document.getElementById("progress-bar").style.width = percent + "%";
+}
+
+/* GENERATE QUESTIONS */
+async function generateQuestions() {
+  const role = document.getElementById("role").value;
+  const loading = document.getElementById("loading");
+  const btn = document.getElementById("genBtn");
+
+  if (!role.trim()) {
+    alert("Please enter a role");
+    return;
+  }
+
+  btn.disabled = true;
+  loading.innerHTML = "Generating...";
+
+  try {
+    const res = await fetch("/generate-questions/?role=" + role, {
+      method: "POST"
+    });
+
+    const data = await res.json();
+    console.log("API RESPONSE (questions):", data);
+
+    if (!data || data.error || !Array.isArray(data.questions)) {
+      loading.innerHTML = "Failed to generate questions";
+      btn.disabled = false;
+      return;
+    }
+
+    questionsList = data.questions;
+
+    const container = document.getElementById("questions");
+    container.innerHTML = "";
+
+    questionsList.forEach((q, i) => {
+      container.innerHTML += `
+        <div class="card question">
+          <strong>Q${i + 1}: ${q}</strong>
+          <textarea id="ans-${i}" oninput="updateProgress()" placeholder="Type your answer..."></textarea>
+        </div>
+      `;
+    });
+
+    document.getElementById("submitBtn").style.display = "block";
+    loading.innerHTML = "";
+    btn.disabled = false;
+
+  } catch (err) {
+    loading.innerHTML = "Error generating questions";
+    btn.disabled = false;
+    console.error(err);
+  }
+}
+
+/* ENTER KEY SUPPORT */
+function handleEnter(event) {
+  if (event.key === "Enter") {
+    generateQuestions();
+  }
+}
+
+/* SUBMIT ANSWERS */
+async function submitAnswers() {
+  console.log("🚀 Submit clicked");
+
+  const loading = document.getElementById("loading");
+  loading.innerHTML = "Evaluating...";
+
+  const answers = questionsList.map((_, i) => {
+    const el = document.getElementById(`ans-${i}`);
+    return el ? el.value : "";
+  });
+
+  try {
+    const res = await fetch("/evaluate-answers/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        questions: questionsList,
+        answers: answers
+      })
+    });
+
+    const data = await res.json();
+    console.log("API RESPONSE (evaluation):", data);
+
+    if (!data || data.error) {
+      loading.innerHTML = "Evaluation failed";
+      return;
+    }
+
+    let suggestionsHTML = "";
+    if (Array.isArray(data.suggestions)) {
+      suggestionsHTML = data.suggestions.map(s => `<li>${s}</li>`).join("");
+    }
+
+    let html = `
+      <div class="card result">
+        <h2>Score: ${data.score ?? "N/A"}</h2>
+        <p>${data.feedback ?? ""}</p>
+        <h3>Suggestions:</h3>
+        <ul>${suggestionsHTML}</ul>
+      </div>
+    `;
+
+    document.getElementById("result").innerHTML = html;
+    loading.innerHTML = "";
+
+  } catch (err) {
+    loading.innerHTML = "Evaluation failed";
+    console.error(err);
+  }
+}
+</script>
+
+
+
+</body>
+</html>
